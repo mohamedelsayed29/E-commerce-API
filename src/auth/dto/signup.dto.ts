@@ -18,7 +18,7 @@ export const signUpSchemaDTO = z.strictObject({
         },{message:"Invalid Egyptian phone number"}
     )
 
-}).refine((data) => data.password !== data .confirmPassword,{
+}).refine((data) => data.password === data.confirmPassword,{
     message:'Password and confirm Password is not Matched',
     path:['confirmPassword']
 }

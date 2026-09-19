@@ -1,21 +1,33 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { User, UserDocument } from 'src/db/models/user.model';
-import { Model } from 'mongoose';
+import { randomInt } from 'node:crypto';
 import { SignUpDTO } from './dto/signup.dto';
 import { hash } from 'src/common/utils/security/hash.utils';
-import { emailEventEmitter } from 'src/common/utils/event/email.event';
+import { OtpTypeEnum } from 'src/common';
+import { OtpRepository, UserRepository } from 'src/db/repository';
 
 @Injectable()
 export class AuthService {
-  constructor(@InjectModel(User.name) private readonly userModel:Model<UserDocument>){}
+  constructor(
+    private readonly userRepository: UserRepository,
+    private readonly otpRepository: OtpRepository,
+  ) {}
+
   async signUp(signUpSchemaDTO: SignUpDTO): Promise<string> {
-    const {username , email , password} = signUpSchemaDTO
-    const checkUser = await this.userModel.findOne({email})
-    if(checkUser) throw new ConflictException('User Already Exist')
-    
-    const [user] = (await this.userModel.create([{username , email , password : await hash({plainText: password})} ]) )||[]
-    emailEventEmitter.emit("confirmationEmail",{to:email , otp:"12345" , username})
+    const { username, email, password, gender, phone, provider } = signUpSchemaDTO
+    const checkUser = await this.userRepository.findOne({ filter: { email } })
+    if (checkUser) throw new ConflictException('User Already Exist')
+    const [user] = (await this.userRepository.create({
+      data: [{ username, email, password: await hash({ plainText: password }), gender, phone, provider }],
+    })) || []
+    // otp post-save hook hashes the code and sends the confirmation email
+    await this.otpRepository.create({
+      data: [{
+        createdBy: user._id,
+        code: String(randomInt(100000, 1000000)),
+        expiredAt: new Date(Date.now() + 2 * 60 * 1000), // 2 min from now
+        type: OtpTypeEnum.CONFIRM_EMAIL,
+      }],
+    })
     return 'User signed up successfully !';
   }
 }
